@@ -1,3 +1,3 @@
 # config.py
-API_KEY = "your-secure-api-key-change-this-12345"
+API_KEY = "OBFvt_5TZUUD5Jk0w1dTuQZq9BHnR6ypDMEIa7Ww6ow"
 LOG_LEVEL = "INFO"
