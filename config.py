@@ -1,3 +1,2 @@
 # config.py
-API_KEY = "your-secure-api-key-change-this-12345"
-LOG_LEVEL = "INFO"
+API_KEY = "your_strong_api_key_here" # Change this to a strong, unique key

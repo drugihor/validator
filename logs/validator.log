@@ -154,3 +154,13 @@
 2025-09-28 07:18:54,770 - INFO - 127.0.0.1 - - [28/Sep/2025 07:18:54] "GET /stats HTTP/1.1" 200 -
 2025-09-28 07:18:56,757 - INFO - 127.0.0.1 - - [28/Sep/2025 07:18:56] "GET /stats HTTP/1.1" 200 -
 2025-09-28 07:18:58,760 - INFO - 127.0.0.1 - - [28/Sep/2025 07:18:58] "GET /stats HTTP/1.1" 200 -
+2025-09-28 21:44:41,083 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://10.0.0.52:10000
+2025-09-28 21:44:41,083 - INFO - [33mPress CTRL+C to quit[0m
+2025-09-28 21:46:47,160 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:10000
+ * Running on http://10.0.0.52:10000
+2025-09-28 21:46:47,161 - INFO - [33mPress CTRL+C to quit[0m
