@@ -363,6 +363,13 @@
                             <input type="file" id="fileProxies" class="form-control" accept=".txt,.csv" disabled>
                         </div>
                     </div>
+                    <div style="display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap;">
+                        <button class="btn btn-primary" id="checkProxiesBtn" disabled>🔎 Проверить прокси</button>
+                        <label style="display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" id="autoRemoveDead" checked> Автоудалять мёртвые
+                        </label>
+                        <small id="proxiesStatus" style="color:#6c757d;">—</small>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -560,6 +567,9 @@
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const batchLoading = document.getElementById('batchLoading');
+    const checkProxiesBtn = document.getElementById('checkProxiesBtn');
+    const autoRemoveDead = document.getElementById('autoRemoveDead');
+    const proxiesStatus = document.getElementById('proxiesStatus');
 
     const loadedCount = document.getElementById('loadedCount');
     const checkedCount = document.getElementById('checkedCount');
@@ -624,14 +634,17 @@
         const enabled = useProxy.checked;
         proxyType.disabled = !enabled;
         fileProxies.disabled = !enabled;
+        checkProxiesBtn.disabled = !enabled;
+        proxiesStatus.textContent = '—';
     });
 
     fileProxies.addEventListener('change', (e) => {
         const file = e.target.files[0];
-        if (!file) { uploadedProxies = []; return; }
+        if (!file) { uploadedProxies = []; proxiesStatus.textContent = '—'; return; }
         const reader = new FileReader();
         reader.onload = (ev) => {
             uploadedProxies = parseProxiesText(ev.target.result);
+            proxiesStatus.textContent = `Загружено прокси: ${uploadedProxies.length}`;
         };
         reader.readAsText(file);
     });
@@ -774,6 +787,53 @@
             abortController.abort();
         }
     }
+
+    async function checkProxies() {
+        if (!useProxy.checked) {
+            alert('Включите использование прокси');
+            return;
+        }
+        if (!uploadedProxies.length) {
+            alert('Сначала загрузите файл с прокси');
+            return;
+        }
+        checkProxiesBtn.disabled = true;
+        proxiesStatus.textContent = 'Проверяем прокси...';
+        try {
+            const payload = {
+                proxies: uploadedProxies.map(p => ({
+                    host: p.host,
+                    port: p.port,
+                    username: p.username || undefined,
+                    password: p.password || undefined,
+                    scheme: proxyType.value || 'http'
+                })),
+                timeout: 5.0
+            };
+            const resp = await fetch('/api/check-proxies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                return;
+            }
+            const live = data.live || [];
+            const dead = data.dead || [];
+            if (autoRemoveDead.checked) {
+                uploadedProxies = live.map(p => ({ host: p.host, port: p.port, username: p.username || null, password: p.password || null }));
+            }
+            proxiesStatus.textContent = `Живые: ${live.length} | Мёртвые: ${dead.length}${autoRemoveDead.checked ? ' (мёртвые удалены)' : ''}`;
+        } catch (e) {
+            alert('Ошибка при проверке прокси: ' + e.message);
+        } finally {
+            checkProxiesBtn.disabled = false;
+        }
+    }
+
+    checkProxiesBtn.addEventListener('click', checkProxies);
 
     startBtn.addEventListener('click', startBatch);
     stopBtn.addEventListener('click', stopBatch);

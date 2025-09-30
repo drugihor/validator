@@ -5,6 +5,7 @@ import time # For delays
 import random # For proxy selection
 from config import API_KEY # Import API_KEY from config.py
 from typing import Optional
+import requests
 
 
 app = Flask(__name__)
@@ -293,6 +294,82 @@ def download_results(file_type):
         return send_file(filename, as_attachment=True)
     except FileNotFoundError:
         return jsonify({"error": f"{file_type}.csv not found"}), 404
+
+
+@app.route("/api/check-proxies", methods=["POST"])
+def check_proxies_api():
+    """Проверка списка прокси (живые/мертвые). Возвращает live/dead.
+    Формат входа proxies: [{host, port, username?, password?, scheme?}]
+    """
+    # Для веб-интерфейса пропустим проверку ключа, как в остальных API
+    if request.headers.get('User-Agent', '').startswith('Mozilla') or 'text/html' in request.headers.get('Accept', ''):
+        pass
+    elif not check_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    proxies_in = data.get("proxies", [])
+    timeout = float(data.get("timeout", 5.0))
+    test_url = data.get("test_url", "https://httpbin.org/ip")
+
+    if not isinstance(proxies_in, list) or not proxies_in:
+        return jsonify({"error": "Missing 'proxies' list"}), 400
+
+    live = []
+    dead = []
+
+    for p in proxies_in:
+        # Поддерживаем как строки, так и объекты
+        if isinstance(p, str):
+            # Пытаемся разобрать строку вида scheme://user:pass@host:port ИЛИ host:port
+            raw = p.strip()
+            scheme = "http"
+            if "://" in raw:
+                scheme, rest = raw.split("://", 1)
+            else:
+                rest = raw
+            username = password = None
+            if "@" in rest:
+                auth, addr = rest.split("@", 1)
+                if ":" in auth:
+                    username, password = auth.split(":", 1)
+                else:
+                    username = auth
+                host_port = addr
+            else:
+                host_port = rest
+            host, port_str = host_port.split(":", 1)
+            port = int(port_str)
+            proxy_obj = Proxy(host, port, username, password, scheme)
+            proxy_dict = {"host": host, "port": port, "username": username, "password": password, "scheme": scheme}
+        else:
+            proxy_obj = Proxy(
+                p.get("host"),
+                int(p.get("port")),
+                p.get("username"),
+                p.get("password"),
+                p.get("scheme", "http")
+            )
+            proxy_dict = {
+                "host": proxy_obj.host,
+                "port": proxy_obj.port,
+                "username": proxy_obj.username,
+                "password": proxy_obj.password,
+                "scheme": proxy_obj.scheme
+            }
+
+        proxies_config = {"http": str(proxy_obj), "https": str(proxy_obj)}
+        try:
+            # HEAD быстрее, но некоторые сайты не разрешают; httpbin допускает GET
+            resp = requests.get(test_url, proxies=proxies_config, timeout=timeout)
+            if resp.status_code in (200, 204, 301, 302, 403):
+                live.append(proxy_dict)
+            else:
+                dead.append({**proxy_dict, "reason": f"status {resp.status_code}"})
+        except Exception as e:
+            dead.append({**proxy_dict, "reason": str(e)})
+
+    return jsonify({"live": live, "dead": dead, "total": len(proxies_in)})
 
 
 if __name__ == "__main__":
