@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, send_file
 from validator import EmailValidator, Proxy, ValidationResult # Import ValidationResult
 import os
 import time # For delays
@@ -12,8 +12,8 @@ email_validator_instance = EmailValidator(timeout=10)
 
 @app.route("/", methods=["GET"])
 def home():
-    """Простой маршрут для проверки состояния сервиса."""
-    return "Email Validator API is running! Use POST on /api/validate-single-email or /api/validate-multiple-emails."
+    """Главная страница с веб-интерфейсом."""
+    return render_template('index.html')
 
 # Global proxy list - empty by default, can be loaded from environment variables
 GLOBAL_PROXIES = []
@@ -96,12 +96,16 @@ def try_methods_sync(email: str, password: str, methods_order: list[str],
 
 @app.route("/api/validate-single-email", methods=["POST"])
 def validate_single_email_api():
-    if not check_auth(request):
+    # For web interface, skip auth check. For API calls, check X-API-Key header
+    if request.headers.get('User-Agent', '').startswith('Mozilla') or 'text/html' in request.headers.get('Accept', ''):
+        # Request from web browser - skip auth
+        pass
+    elif not check_auth(request):
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json() # Use get_json() for POST body
     email = data.get("email")
-    password = data.get("password")
+    password = data.get("password", "")
     requested_method = data.get("method", "auto") # Default to "auto"
     delay_seconds = float(data.get('delay_seconds', API_DELAY_SECONDS))
 
@@ -131,7 +135,11 @@ def validate_single_email_api():
 
 @app.route("/api/validate-multiple-emails", methods=["POST"])
 def validate_multiple_emails_api():
-    if not check_auth(request):
+    # For web interface, skip auth check. For API calls, check X-API-Key header
+    if request.headers.get('User-Agent', '').startswith('Mozilla') or 'text/html' in request.headers.get('Accept', ''):
+        # Request from web browser - skip auth
+        pass
+    elif not check_auth(request):
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json()
@@ -158,9 +166,15 @@ def validate_multiple_emails_api():
 
     # Simple synchronous processing for multiple emails
     def validate_item(item):
-        email = item.get("email")
-        password = item.get("password")
-        proxy_data = item.get("proxy")
+        # Handle both string emails (from web interface) and object emails (from API)
+        if isinstance(item, str):
+            email = item
+            password = ""
+            proxy_data = None
+        else:
+            email = item.get("email")
+            password = item.get("password", "")
+            proxy_data = item.get("proxy")
 
         if not email:
             return {
@@ -183,7 +197,92 @@ def validate_multiple_emails_api():
     # Process all emails sequentially (for simplicity and Render compatibility)
     results = [validate_item(item) for item in emails_to_validate]
     
-    return jsonify(results)
+    return jsonify({"results": results})
+
+
+# Web interface routes for file upload and batch processing
+@app.route("/upload", methods=["POST"])
+def upload_files():
+    """Загрузка файлов email:pass и прокси для веб-интерфейса"""
+    if not check_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    try:
+        if 'email_file' in request.files:
+            file = request.files['email_file']
+            if file.filename != '':
+                content = file.read().decode('utf-8')
+                emails = [line.strip() for line in content.split('\n') if line.strip()]
+                # Сохраняем в глобальную переменную для обработки
+                app.config['uploaded_emails'] = emails
+                return jsonify({"emails": len(emails)})
+        
+        if 'proxy_file' in request.files:
+            file = request.files['proxy_file']
+            if file.filename != '':
+                content = file.read().decode('utf-8')
+                proxies = [line.strip() for line in content.split('\n') if line.strip()]
+                app.config['uploaded_proxies'] = proxies
+                return jsonify({"proxies": len(proxies)})
+                
+        return jsonify({"error": "No file uploaded"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/start", methods=["POST"])
+def start_validation():
+    """Запуск пакетной валидации"""
+    if not check_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    if 'uploaded_emails' not in app.config:
+        return jsonify({"error": "No emails uploaded"}), 400
+    
+    # Инициализируем статистику
+    app.config['stats'] = {
+        'total': len(app.config['uploaded_emails']),
+        'checked': 0,
+        'remaining': len(app.config['uploaded_emails']),
+        'good': 0,
+        'bad': 0
+    }
+    
+    return jsonify({"status": "started"})
+
+@app.route("/stop", methods=["POST"])
+def stop_validation():
+    """Остановка пакетной валидации"""
+    if not check_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    return jsonify({"status": "stopped"})
+
+@app.route("/stats", methods=["GET"])
+def get_stats():
+    """Получение статистики валидации"""
+    if not check_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    stats = app.config.get('stats', {
+        'total': 0, 'checked': 0, 'remaining': 0, 'good': 0, 'bad': 0
+    })
+    
+    return jsonify({"stats": stats})
+
+@app.route("/download/<file_type>", methods=["GET"])
+def download_results(file_type):
+    """Скачивание результатов валидации"""
+    if not check_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    if file_type not in ['good', 'bad']:
+        return jsonify({"error": "Invalid file type"}), 400
+    
+    try:
+        filename = f"results/{file_type}.csv"
+        return send_file(filename, as_attachment=True)
+    except FileNotFoundError:
+        return jsonify({"error": f"{file_type}.csv not found"}), 404
 
 
 if __name__ == "__main__":

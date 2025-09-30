@@ -1,120 +1,462 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <title>EmailValidator Pro — Cloud</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EmailValidator Pro — API Интерфейс</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; }
-        .container { max-width: 900px; margin: 0 auto; }
-        .btn { padding: 10px 15px; margin: 5px; border: none; cursor: pointer; }
-        .btn-primary { background: #007bff; color: white; }
-        .btn-danger { background: #dc3545; color: white; }
-        .btn-success { background: #28a745; color: white; }
-        .progress { margin: 10px 0; }
-        #log { height: 250px; overflow-y: scroll; background: #f4f4f4; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 14px; }
-        .stats { background: white; padding: 15px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin: 10px 0; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        
+        .card-header {
+            background: #f8f9fa;
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .card-header h2 {
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .card-body {
+            padding: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        textarea.form-control {
+            resize: vertical;
+            min-height: 120px;
+            font-family: monospace;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 140px;
+            justify-content: center;
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-success {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(45deg, #dc3545, #e83e8c);
+            color: white;
+        }
+        
+        .results {
+            margin-top: 20px;
+        }
+        
+        .result-item {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .result-item.valid {
+            border-left-color: #28a745;
+            background: #f8fff8;
+        }
+        
+        .result-item.invalid {
+            border-left-color: #dc3545;
+            background: #fff8f8;
+        }
+        
+        .email-address {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status.valid {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.invalid {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            color: #667eea;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .card-body {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
     </style>
 </head>
 <body>
-<div class="container">
-    <h1>📧 EmailValidator Pro — Cloud</h1>
-
-    <input type="file" id="emailFile" accept=".txt"><button onclick="uploadEmails()" class="btn btn-primary">📁 Загрузить email:pass</button><br><br>
-
-    <input type="file" id="proxyFile" accept=".txt"><button onclick="uploadProxies()" class="btn btn-primary">🔁 Загрузить прокси</button>
-
-    <p><label>Потоки: <input type="number" id="threads" value="5" min="1" max="50"></label></p>
-
-    <button onclick="start()" class="btn btn-success" id="startBtn">▶️ Старт</button>
-    <button onclick="stop()" class="btn btn-danger" id="stopBtn" disabled>⏹️ Стоп</button>
-
-    <div class="stats">
-        <p><strong>Загружено:</strong> <span id="total">0</span> | <strong>Проверено:</strong> <span id="checked">0</span> | <strong>Осталось:</strong> <span id="remaining">0</span></p>
-        <p><strong>Good:</strong> <span id="good">0</span> | <strong>Bad:</strong> <span id="bad">0</span></p>
+    <div class="container">
+        <div class="header">
+            <h1>📧 EmailValidator Pro</h1>
+            <p>Мощный API для валидации электронных адресов</p>
+        </div>
+        
+        <!-- Проверка одного email -->
+        <div class="card">
+            <div class="card-header">
+                <h2>✉️ Проверка одного email</h2>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label for="singleEmail">Email адрес:</label>
+                    <input type="email" id="singleEmail" class="form-control" placeholder="example@domain.com">
+                </div>
+                <button onclick="validateSingleEmail()" class="btn btn-primary" id="singleBtn">
+                    <span>🔍</span> Проверить
+                </button>
+                <div class="loading" id="singleLoading">
+                    <div class="spinner"></div>
+                    Проверяем email...
+                </div>
+                <div id="singleResult" class="results"></div>
+            </div>
+        </div>
+        
+        <!-- Проверка множественных email -->
+        <div class="card">
+            <div class="card-header">
+                <h2>📝 Проверка множественных email</h2>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label for="multipleEmails">Email адреса (по одному на строку):</label>
+                    <textarea id="multipleEmails" class="form-control" placeholder="example1@domain.com&#10;example2@domain.com&#10;example3@domain.com"></textarea>
+                </div>
+                <button onclick="validateMultipleEmails()" class="btn btn-primary" id="multipleBtn">
+                    <span>📊</span> Проверить все
+                </button>
+                <div class="loading" id="multipleLoading">
+                    <div class="spinner"></div>
+                    Обрабатываем emails...
+                </div>
+                <div id="multipleStats" class="stats" style="display: none;">
+                    <div class="stat-item">
+                        <div class="stat-number" id="totalCount">0</div>
+                        <div class="stat-label">Всего</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" id="validCount">0</div>
+                        <div class="stat-label">Валидных</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" id="invalidCount">0</div>
+                        <div class="stat-label">Невалидных</div>
+                    </div>
+                </div>
+                <div id="multipleResults" class="results"></div>
+            </div>
+        </div>
     </div>
 
-    <a href="/download/good" class="btn btn-success" target="_blank">💾 Скачать good.csv</a>
-    <a href="/download/bad" class="btn btn-danger" target="_blank">🗑️ Скачать bad.csv</a>
-
-    <div id="log"></div>
-</div>
-
-<script>
-    function uploadEmails() {
-        const file = document.getElementById('emailFile').files[0];
-        const formData = new FormData();
-        formData.append('email_file', file);
-        fetch('/upload', { method: 'POST', body: formData })
-            .then(r => r.json())
-            .then(data => {
-                if (data.emails) {
-                    document.getElementById('total').textContent = data.emails;
-                    addLog("✅ Email загружены: " + data.emails);
+    <script>
+        async function validateSingleEmail() {
+            const email = document.getElementById('singleEmail').value.trim();
+            const btn = document.getElementById('singleBtn');
+            const loading = document.getElementById('singleLoading');
+            const result = document.getElementById('singleResult');
+            
+            if (!email) {
+                alert('Пожалуйста, введите email адрес');
+                return;
+            }
+            
+            btn.disabled = true;
+            loading.style.display = 'block';
+            result.innerHTML = '';
+            
+            try {
+                const response = await fetch('/api/validate-single-email', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    result.innerHTML = createResultItem(data.email, data.is_valid, data.details || {});
                 } else {
-                    addLog("❌ Ошибка загрузки email");
+                    result.innerHTML = `<div class="result-item invalid">❌ Ошибка: ${data.error || 'Неизвестная ошибка'}</div>`;
                 }
+            } catch (error) {
+                result.innerHTML = `<div class="result-item invalid">❌ Ошибка соединения: ${error.message}</div>`;
+            } finally {
+                btn.disabled = false;
+                loading.style.display = 'none';
+            }
+        }
+        
+        async function validateMultipleEmails() {
+            const emailsText = document.getElementById('multipleEmails').value.trim();
+            const btn = document.getElementById('multipleBtn');
+            const loading = document.getElementById('multipleLoading');
+            const results = document.getElementById('multipleResults');
+            const stats = document.getElementById('multipleStats');
+            
+            if (!emailsText) {
+                alert('Пожалуйста, введите email адреса');
+                return;
+            }
+            
+            const emails = emailsText.split('\n').map(e => e.trim()).filter(e => e.length > 0);
+            
+            if (emails.length === 0) {
+                alert('Не найдено валидных email адресов');
+                return;
+            }
+            
+            btn.disabled = true;
+            loading.style.display = 'block';
+            results.innerHTML = '';
+            stats.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/validate-multiple-emails', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ emails: emails })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayMultipleResults(data.results);
+                    updateStats(data.results);
+                } else {
+                    results.innerHTML = `<div class="result-item invalid">❌ Ошибка: ${data.error || 'Неизвестная ошибка'}</div>`;
+                }
+            } catch (error) {
+                results.innerHTML = `<div class="result-item invalid">❌ Ошибка соединения: ${error.message}</div>`;
+            } finally {
+                btn.disabled = false;
+                loading.style.display = 'none';
+            }
+        }
+        
+        function createResultItem(email, isValid, details) {
+            const statusClass = isValid ? 'valid' : 'invalid';
+            const statusIcon = isValid ? '✅' : '❌';
+            const statusText = isValid ? 'валидный' : 'невалидный';
+            
+            let detailsHtml = '';
+            if (details && Object.keys(details).length > 0) {
+                detailsHtml = '<br><small>';
+                for (const [key, value] of Object.entries(details)) {
+                    detailsHtml += `<strong>${key}:</strong> ${value} | `;
+                }
+                detailsHtml = detailsHtml.slice(0, -3) + '</small>';
+            }
+            
+            return `
+                <div class="result-item ${statusClass}">
+                    <div class="email-address">${email}</div>
+                    <span class="status ${statusClass}">${statusIcon} ${statusText}</span>
+                    ${detailsHtml}
+                </div>
+            `;
+        }
+        
+        function displayMultipleResults(results) {
+            const resultsContainer = document.getElementById('multipleResults');
+            let html = '';
+            
+            results.forEach(result => {
+                html += createResultItem(result.email, result.is_valid, result.details || {});
             });
-    }
-
-    function uploadProxies() {
-        const file = document.getElementById('proxyFile').files[0];
-        const formData = new FormData();
-        formData.append('proxy_file', file);
-        fetch('/upload', { method: 'POST', body: formData })
-            .then(r => r.json())
-            .then(data => {
-                addLog("🔁 Прокси загружены: " + data.proxies);
-            });
-    }
-
-    function start() {
-        fetch('/start', {
-            method: 'POST',
-            headers: { 'X-API-Key': 'your-secure-api-key-change-this-12345' }
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.status) {
-                document.getElementById('startBtn').disabled = true;
-                document.getElementById('stopBtn').disabled = false;
-                addLog("▶️ Проверка запущена");
-            } else {
-                addLog("❌ Ошибка: " + data.error);
+            
+            resultsContainer.innerHTML = html;
+        }
+        
+        function updateStats(results) {
+            const total = results.length;
+            const valid = results.filter(r => r.is_valid).length;
+            const invalid = total - valid;
+            
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('validCount').textContent = valid;
+            document.getElementById('invalidCount').textContent = invalid;
+            document.getElementById('multipleStats').style.display = 'grid';
+        }
+        
+        // Обработка Enter для быстрой отправки
+        document.getElementById('singleEmail').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                validateSingleEmail();
             }
         });
-    }
-
-    function stop() {
-        fetch('/stop', {
-            method: 'POST',
-            headers: { 'X-API-Key': 'your-secure-api-key-change-this-12345' }
-        })
-        .then(() => {
-            document.getElementById('startBtn').disabled = false;
-            document.getElementById('stopBtn').disabled = true;
-            addLog("⏹️ Проверка остановлена");
+        
+        // Автоматическое изменение размера textarea
+        document.getElementById('multipleEmails').addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 300) + 'px';
         });
-    }
-
-    function addLog(msg) {
-        const log = document.getElementById('log');
-        log.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
-        log.scrollTop = log.scrollHeight;
-    }
-
-    // Автообновление статистики
-    setInterval(() => {
-        fetch('/stats', {
-            headers: { 'X-API-Key': 'your-secure-api-key-change-this-12345' }
-        })
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('checked').textContent = data.stats.checked;
-            document.getElementById('remaining').textContent = data.stats.remaining;
-            document.getElementById('good').textContent = data.stats.good;
-            document.getElementById('bad').textContent = data.stats.bad;
-        })
-        .catch(() => {});
-    }, 2000);
-</script>
+    </script>
 </body>
 </html>
