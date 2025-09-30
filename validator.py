@@ -1,4 +1,4 @@
-# validator.py (REALISTIC EXAMPLE - NOT FULLY FUNCTIONAL WITHOUT EXTERNAL LIBRARIES AND CONFIGURATION)
+# validator.py - Production Email Validation Module
 import smtplib
 import socket
 import dns.resolver
@@ -34,7 +34,7 @@ class Proxy:
 class ValidationResult:
     def __init__(self, email: str, status: str, method: str, details: str = "", proxy: Optional[Proxy] = None):
         self.email = email
-        self.status = status # "valid", "invalid", "error", "disposable", "unknown"
+        self.status = status # "valid", "invalid", "error", "disposable"
         self.method = method
         self.details = details
         self.proxy = str(proxy) if proxy else None
@@ -79,7 +79,7 @@ class EmailValidator:
                 for port in SMTP_PORTS:
                     with smtplib.SMTP(mx_host, port, timeout=self.timeout) as server:
                         server.ehlo(socket.gethostname())
-                        server.mail('test@example.com')
+                        server.mail('noreply@validator.local')
                         code, msg = server.rcpt(email)
                         
                         if code == 250:
@@ -199,24 +199,49 @@ class EmailValidator:
         if self._check_disposable(email):
             return ValidationResult(email, "disposable", "http", "Disposable email detected", proxy)
 
-        if "gmail.com" in domain or "outlook.com" in domain:
-            try:
-                url = f"https://mail.{domain}"
-                
-                proxies_config = {}
-                if proxy:
-                    proxy_url = f"http://{proxy.username}:{proxy.password}@{proxy.host}:{proxy.port}" if proxy.username else f"http://{proxy.host}:{proxy.port}"
-                    proxies_config = {"http": proxy_url, "https": proxy_url}
+        # Configure proxy if provided
+        proxies_config = {}
+        if proxy:
+            proxy_url = f"http://{proxy.username}:{proxy.password}@{proxy.host}:{proxy.port}" if proxy.username else f"http://{proxy.host}:{proxy.port}"
+            proxies_config = {"http": proxy_url, "https": proxy_url}
 
-                response = requests.get(url, timeout=self.timeout, proxies=proxies_config, allow_redirects=True)
-                
-                if response.status_code == 200:
-                    return ValidationResult(email, "unknown", "http", f"HTTP page loaded ({url}), status: {response.status_code}", proxy)
-                else:
-                    return ValidationResult(email, "invalid", "http", f"HTTP check failed ({url}), status: {response.status_code}", proxy)
-            except requests.exceptions.RequestException as e:
-                return ValidationResult(email, "error", "http", f"HTTP request error: {e}", proxy)
-            except Exception as e:
-                return ValidationResult(email, "error", "http", f"General HTTP error: {e}", proxy)
+        # Try multiple URL patterns for HTTP validation
+        urls_to_try = [
+            f"https://mail.{domain}",
+            f"https://webmail.{domain}",
+            f"https://login.{domain}",
+            f"https://{domain}"
+        ]
         
-        return ValidationResult(email, "unknown", "http", "HTTP validation not implemented for this domain or failed generic check", proxy)
+        last_error = None
+        
+        for url in urls_to_try:
+            try:
+                response = requests.head(url, timeout=self.timeout, proxies=proxies_config, allow_redirects=True)
+                
+                if response.status_code in [200, 301, 302, 403, 405]:  # Indicates server exists
+                    # Try to check if it's actually an email service
+                    if any(keyword in response.headers.get('server', '').lower() for keyword in ['mail', 'exchange', 'postfix']):
+                        return ValidationResult(email, "valid", "http", f"Mail server detected at {url}, status: {response.status_code}", proxy)
+                    elif response.status_code in [200, 301, 302]:
+                        return ValidationResult(email, "valid", "http", f"Web service accessible at {url}, status: {response.status_code}", proxy)
+                    else:
+                        return ValidationResult(email, "valid", "http", f"Service exists at {url}, status: {response.status_code}", proxy)
+                        
+            except requests.exceptions.RequestException as e:
+                last_error = str(e)
+                continue
+            except Exception as e:
+                last_error = str(e)
+                continue
+        
+        # If all HTTP attempts failed, try basic DNS check
+        try:
+            dns.resolver.resolve(domain, 'A', lifetime=self.timeout)
+            return ValidationResult(email, "invalid", "http", f"Domain exists but no web services accessible. Last error: {last_error}", proxy)
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+            return ValidationResult(email, "invalid", "http", "Domain does not exist", proxy)
+        except dns.exception.Timeout:
+            return ValidationResult(email, "error", "http", "DNS timeout during validation", proxy)
+        except Exception as e:
+            return ValidationResult(email, "error", "http", f"HTTP validation error: {e}", proxy)

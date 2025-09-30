@@ -1,27 +1,22 @@
 from flask import Flask, request, jsonify
 from validator import EmailValidator, Proxy, ValidationResult # Import ValidationResult
 import os
-import asyncio # For async endpoints
+import time # For delays
 import random # For proxy selection
 from config import API_KEY # Import API_KEY from config.py
 from typing import Optional
 
 
 app = Flask(__name__)
-email_validator_instance = EmailValidator(timeout=10) # Renamed for consistency
-# *** ВСТАВЬТЕ ЭТОТ БЛОК КОДА СЮДА ***
+email_validator_instance = EmailValidator(timeout=10)
+
 @app.route("/", methods=["GET"])
 def home():
     """Простой маршрут для проверки состояния сервиса."""
     return "Email Validator API is running! Use POST on /api/validate-single-email or /api/validate-multiple-emails."
 
-# Global list of proxies, could be loaded from a file or environment in a real app
-# For this example, let's keep it simple or imagine it's loaded at startup
-GLOBAL_PROXIES = [
-    Proxy("192.168.1.1", 8080),
-    Proxy("199.168.1.2", 8081, "user", "pass"),
-    # Add more proxies here if needed, or implement a loader function
-]
+# Global proxy list - empty by default, can be loaded from environment variables
+GLOBAL_PROXIES = []
 
 DEFAULT_METHOD_ORDER = ["smtp", "mx", "imap", "pop3", "http"]
 API_DELAY_SECONDS = 0.1 # Delay between checks in mass mode
@@ -30,18 +25,16 @@ def check_auth(req):
     key = req.headers.get("X-API-Key")
     return key == API_KEY
 
-async def try_methods_async(email: str, password: str, methods_order: list[str],
-                            request_proxy: Optional[Proxy] = None, delay_seconds: float = API_DELAY_SECONDS) -> dict:
+def try_methods_sync(email: str, password: str, methods_order: list[str],
+                      request_proxy: Optional[Proxy] = None, delay_seconds: float = API_DELAY_SECONDS) -> dict:
     """
-    Asynchronous wrapper: tries methods in order, returns the first successful result
-    or the last unsuccessful one.
+    Synchronous email validation: tries validation methods in order, 
+    returns the first successful result or the last unsuccessful one.
     """
     last_result_dict = None
     
-    # Prioritize proxy from request, otherwise use a random global proxy
+    # Use proxy only if explicitly provided in request
     proxy_to_use = request_proxy
-    if not proxy_to_use and GLOBAL_PROXIES:
-        proxy_to_use = random.choice(GLOBAL_PROXIES)
 
     for method in methods_order:
         validator_method = None
@@ -61,11 +54,11 @@ async def try_methods_async(email: str, password: str, methods_order: list[str],
             continue 
 
         try:
-            # Run the synchronous validator method in a thread pool
+            # Call the synchronous validator method directly
             if method in ["smtp", "imap", "pop3"]:
-                result_obj = await asyncio.to_thread(validator_method, email, password, proxy_to_use)
+                result_obj = validator_method(email, password, proxy_to_use)
             else: # For methods like MX, HTTP that don't need password
-                result_obj = await asyncio.to_thread(validator_method, email, proxy_to_use)
+                result_obj = validator_method(email, proxy_to_use)
         except Exception as e:
             result_obj = ValidationResult(email, "error", method, f"exception: {repr(e)}", proxy_to_use)
 
@@ -85,7 +78,7 @@ async def try_methods_async(email: str, password: str, methods_order: list[str],
         
         # If not valid, and more methods to try, add a small delay
         if method != methods_order[-1]:
-            await asyncio.sleep(delay_seconds)
+            time.sleep(delay_seconds)
 
     if last_result_dict:
         return last_result_dict
@@ -102,7 +95,7 @@ async def try_methods_async(email: str, password: str, methods_order: list[str],
 
 
 @app.route("/api/validate-single-email", methods=["POST"])
-async def validate_single_email_api(): # Made async
+def validate_single_email_api():
     if not check_auth(request):
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -132,12 +125,12 @@ async def validate_single_email_api(): # Made async
     else:
         return jsonify({"error": "Invalid 'method' parameter. Must be 'auto', a string, or a list of strings."}), 400
 
-    result = await try_methods_async(email, password, methods_order, request_proxy, delay_seconds)
+    result = try_methods_sync(email, password, methods_order, request_proxy, delay_seconds)
     return jsonify(result)
 
 
 @app.route("/api/validate-multiple-emails", methods=["POST"])
-async def validate_multiple_emails_api(): # Made async
+def validate_multiple_emails_api():
     if not check_auth(request):
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -163,9 +156,8 @@ async def validate_multiple_emails_api(): # Made async
     else:
         return jsonify({"error": "Invalid 'method' parameter. Must be 'auto', a string, or a list of strings."}), 400
 
-    semaphore = asyncio.Semaphore(concurrency)
-
-    async def validate_item_with_concurrency(item):
+    # Simple synchronous processing for multiple emails
+    def validate_item(item):
         email = item.get("email")
         password = item.get("password")
         proxy_data = item.get("proxy")
@@ -185,13 +177,11 @@ async def validate_multiple_emails_api(): # Made async
             request_proxy = Proxy(proxy_data.get("host"), proxy_data.get("port"),
                                   proxy_data.get("username"), proxy_data.get("password"))
 
-        async with semaphore:
-            res = await try_methods_async(email, password, methods_order, request_proxy, delay_seconds)
-            # Apply additional delay *after* the entire item is processed, if configured
-            return res
+        res = try_methods_sync(email, password, methods_order, request_proxy, delay_seconds)
+        return res
 
-    tasks = [validate_item_with_concurrency(item) for item in emails_to_validate]
-    results = await asyncio.gather(*tasks)
+    # Process all emails sequentially (for simplicity and Render compatibility)
+    results = [validate_item(item) for item in emails_to_validate]
     
     return jsonify(results)
 
@@ -199,8 +189,7 @@ async def validate_multiple_emails_api(): # Made async
 if __name__ == "__main__":
     # Ensure dnspython and requests are installed:
     # pip install dnspython requests
-    # For production, use an ASGI server like Uvicorn for async endpoints:
-    # uvicorn app:app --host 0.0.0.0 --port 5000 --reload
-    # For local development, `flask run` (newer versions) or `python app.py` should work,
-    # but the async benefits will be limited without a proper ASGI server.
+    # For production, use a WSGI server like Gunicorn:
+    # gunicorn --bind 0.0.0.0:5000 --workers 2 app:app
+    # For local development, `flask run` or `python app.py` should work.
     app.run(host="0.0.0.0", port=5000, debug=True)
