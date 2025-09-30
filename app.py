@@ -9,6 +9,11 @@ from typing import Optional
 
 app = Flask(__name__)
 email_validator_instance = EmailValidator(timeout=10) # Renamed for consistency
+# *** ВСТАВЬТЕ ЭТОТ БЛОК КОДА СЮДА ***
+@app.route("/", methods=["GET"])
+def home():
+    """Простой маршрут для проверки состояния сервиса."""
+    return "Email Validator API is running! Use POST on /api/validate-single-email or /api/validate-multiple-emails."
 
 # Global list of proxies, could be loaded from a file or environment in a real app
 # For this example, let's keep it simple or imagine it's loaded at startup
