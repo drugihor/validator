@@ -19,17 +19,18 @@ POP3_PORTS = [110, 995]
 
 
 class Proxy:
-    def __init__(self, host: str, port: int, username: Optional[str] = None, password: Optional[str] = None):
+    def __init__(self, host: str, port: int, username: Optional[str] = None, password: Optional[str] = None, scheme: str = "http"):
         self.host = host
         self.port = port
         self.username = username
         self.password = password
+        self.scheme = scheme or "http"
 
     def __str__(self):
         auth = ""
         if self.username and self.password:
             auth = f"{self.username}:{self.password}@"
-        return f"{auth}{self.host}:{self.port}"
+        return f"{self.scheme}://{auth}{self.host}:{self.port}"
 
 class ValidationResult:
     def __init__(self, email: str, status: str, method: str, details: str = "", proxy: Optional[Proxy] = None):
@@ -202,7 +203,7 @@ class EmailValidator:
         # Configure proxy if provided
         proxies_config = {}
         if proxy:
-            proxy_url = f"http://{proxy.username}:{proxy.password}@{proxy.host}:{proxy.port}" if proxy.username else f"http://{proxy.host}:{proxy.port}"
+            proxy_url = str(proxy)  # includes scheme://[user:pass@]host:port
             proxies_config = {"http": proxy_url, "https": proxy_url}
 
         # Try multiple URL patterns for HTTP validation

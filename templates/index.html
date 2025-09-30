@@ -309,6 +309,93 @@
                 <div id="multipleResults" class="results"></div>
             </div>
         </div>
+
+        <!-- Пакетная проверка из файлов -->
+        <div class="card">
+            <div class="card-header">
+                <h2>📂 Пакетная проверка из файлов</h2>
+            </div>
+            <div class="card-body">
+                <div class="stats" style="margin-top: 0;">
+                    <div class="stat-item">
+                        <div class="stat-number" id="loadedCount">0</div>
+                        <div class="stat-label">Загружено</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" id="checkedCount">0</div>
+                        <div class="stat-label">Проверено</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" id="goodCount2">0</div>
+                        <div class="stat-label">Good</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" id="badCount2">0</div>
+                        <div class="stat-label">Bad</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" id="invalidCount2">0</div>
+                        <div class="stat-label">Invalid</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="fileAccounts">Файл email:password (по одному на строке)</label>
+                    <input type="file" id="fileAccounts" class="form-control" accept=".txt,.csv">
+                    <small>Пример строки: user@example.com:pass123</small>
+                </div>
+
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" id="useProxy"> Использовать прокси
+                    </label>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
+                        <div>
+                            <label for="proxyType">Тип прокси</label>
+                            <select id="proxyType" class="form-control" disabled>
+                                <option value="http">HTTP</option>
+                                <option value="socks4">SOCKS4</option>
+                                <option value="socks5">SOCKS5</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="fileProxies">Файл прокси (host:port или user:pass@host:port)</label>
+                            <input type="file" id="fileProxies" class="form-control" accept=".txt,.csv" disabled>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="threads">Количество потоков</label>
+                    <input type="number" id="threads" class="form-control" min="1" max="100" value="10">
+                </div>
+
+                <div class="form-group">
+                    <label>Методы проверки</label>
+                    <div style="display:flex; gap:15px; flex-wrap: wrap; margin-top:8px;">
+                        <label><input type="checkbox" class="method-check" value="smtp" checked> SMTP</label>
+                        <label><input type="checkbox" class="method-check" value="mx" checked> MX</label>
+                        <label><input type="checkbox" class="method-check" value="imap"> IMAP</label>
+                        <label><input type="checkbox" class="method-check" value="pop3"> POP3</label>
+                        <label><input type="checkbox" class="method-check" value="http"> HTTP</label>
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:10px; flex-wrap: wrap;">
+                    <button class="btn btn-success" id="startBtn">▶️ Старт</button>
+                    <button class="btn btn-danger" id="stopBtn" disabled>⏹️ Стоп</button>
+                    <button class="btn btn-primary" id="downloadGoodBtn" disabled>⬇️ Скачать good.csv</button>
+                    <button class="btn btn-primary" id="downloadBadBtn" disabled>⬇️ Скачать bad.csv</button>
+                </div>
+
+                <div class="loading" id="batchLoading" style="margin-top:12px;">
+                    <div class="spinner"></div>
+                    Идёт пакетная проверка...
+                </div>
+
+                <div id="batchResults" class="results" style="margin-top: 10px;"></div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -457,6 +544,239 @@
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 300) + 'px';
         });
-    </script>
+</script>
+
+<script>
+    // Пакетная проверка из файлов
+    let uploadedAccounts = [];
+    let uploadedProxies = [];
+    let abortController = null;
+
+    const fileAccounts = document.getElementById('fileAccounts');
+    const fileProxies = document.getElementById('fileProxies');
+    const useProxy = document.getElementById('useProxy');
+    const proxyType = document.getElementById('proxyType');
+
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const batchLoading = document.getElementById('batchLoading');
+
+    const loadedCount = document.getElementById('loadedCount');
+    const checkedCount = document.getElementById('checkedCount');
+    const goodCount2 = document.getElementById('goodCount2');
+    const badCount2 = document.getElementById('badCount2');
+    const invalidCount2 = document.getElementById('invalidCount2');
+
+    const downloadGoodBtn = document.getElementById('downloadGoodBtn');
+    const downloadBadBtn = document.getElementById('downloadBadBtn');
+
+    function parseAccountsText(text) {
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const items = [];
+        for (const line of lines) {
+            const [email, ...rest] = line.split(':');
+            const password = rest.join(':');
+            if (email) {
+                items.push({ email: email.trim(), password: (password || '').trim() });
+            }
+        }
+        return items;
+    }
+
+    function parseProxyLine(line) {
+        // Formats: host:port OR user:pass@host:port
+        let username = null, password = null, hostPort = line;
+        if (line.includes('@')) {
+            const [auth, addr] = line.split('@');
+            hostPort = addr;
+            const [u, p] = auth.split(':');
+            username = u || null;
+            password = p || null;
+        }
+        const [host, portStr] = hostPort.split(':');
+        const port = parseInt(portStr, 10);
+        if (!host || !port) return null;
+        return { host, port, username, password };
+    }
+
+    function parseProxiesText(text) {
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const items = [];
+        for (const line of lines) {
+            const p = parseProxyLine(line);
+            if (p) items.push(p);
+        }
+        return items;
+    }
+
+    fileAccounts.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            uploadedAccounts = parseAccountsText(ev.target.result);
+            loadedCount.textContent = uploadedAccounts.length;
+        };
+        reader.readAsText(file);
+    });
+
+    useProxy.addEventListener('change', () => {
+        const enabled = useProxy.checked;
+        proxyType.disabled = !enabled;
+        fileProxies.disabled = !enabled;
+    });
+
+    fileProxies.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) { uploadedProxies = []; return; }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            uploadedProxies = parseProxiesText(ev.target.result);
+        };
+        reader.readAsText(file);
+    });
+
+    function getSelectedMethods() {
+        const checks = Array.from(document.querySelectorAll('.method-check'));
+        const selected = checks.filter(c => c.checked).map(c => c.value);
+        return selected.length ? selected : ['auto'];
+    }
+
+    function roundRobinProxy(index) {
+        if (!useProxy.checked || uploadedProxies.length === 0) return null;
+        const p = uploadedProxies[index % uploadedProxies.length];
+        return {
+            host: p.host,
+            port: p.port,
+            username: p.username || undefined,
+            password: p.password || undefined,
+            scheme: proxyType.value || 'http'
+        };
+    }
+
+    function buildCsv(rows) {
+        if (!rows.length) return '';
+        const headers = Object.keys(rows[0]);
+        const escape = (v) => {
+            const s = (v === null || v === undefined) ? '' : String(v);
+            if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+                return '"' + s.replace(/"/g, '""') + '"';
+            }
+            return s;
+        };
+        const lines = [headers.join(',')];
+        for (const row of rows) {
+            lines.push(headers.map(h => escape(row[h])).join(','));
+        }
+        return lines.join('\n');
+    }
+
+    function download(filename, text) {
+        const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    async function startBatch() {
+        if (!uploadedAccounts.length) {
+            alert('Сначала загрузите файл с email:password');
+            return;
+        }
+        const methods = getSelectedMethods();
+        const threads = parseInt(document.getElementById('threads').value, 10) || 1;
+
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        batchLoading.style.display = 'block';
+        checkedCount.textContent = '0';
+        goodCount2.textContent = '0';
+        badCount2.textContent = '0';
+        invalidCount2.textContent = '0';
+        downloadGoodBtn.disabled = true;
+        downloadBadBtn.disabled = true;
+
+        abortController = new AbortController();
+        const signal = abortController.signal;
+
+        // Собираем payload для API
+        const items = uploadedAccounts.map((acc, idx) => {
+            const proxy = roundRobinProxy(idx);
+            const item = { email: acc.email };
+            if (acc.password) item.password = acc.password;
+            if (proxy) item.proxy = proxy;
+            return item;
+        });
+
+        let good = [];
+        let bad = [];
+        let invalid = 0;
+
+        try {
+            const response = await fetch('/api/validate-multiple-emails', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ emails: items, method: methods, concurrency: threads }),
+                signal
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                return;
+            }
+
+            const results = data.results || [];
+            let html = '';
+            results.forEach((r) => {
+                const isValid = !!r.is_valid;
+                if (isValid) {
+                    good.push({ email: r.email, method: r.method_used, status: r.status });
+                } else {
+                    bad.push({ email: r.email, method: r.method_used, status: r.status });
+                }
+                if (r.status === 'invalid' || r.status === 'error') invalid += 1;
+                html += (window.createResultItem ? window.createResultItem(r.email, isValid, r.details || {}) : '')
+            });
+            document.getElementById('batchResults').innerHTML = html;
+
+            checkedCount.textContent = String(results.length);
+            goodCount2.textContent = String(good.length);
+            badCount2.textContent = String(bad.length);
+            invalidCount2.textContent = String(invalid);
+
+            // Включаем кнопки скачивания
+            downloadGoodBtn.disabled = good.length === 0;
+            downloadBadBtn.disabled = bad.length === 0;
+
+            // Вешаем обработчики скачивания
+            downloadGoodBtn.onclick = () => download('good.csv', buildCsv(good));
+            downloadBadBtn.onclick = () => download('bad.csv', buildCsv(bad));
+        } catch (e) {
+            if (e.name === 'AbortError') {
+                // Остановлено пользователем
+            } else {
+                alert('Ошибка соединения: ' + e.message);
+            }
+        } finally {
+            batchLoading.style.display = 'none';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+    }
+
+    function stopBatch() {
+        if (abortController) {
+            abortController.abort();
+        }
+    }
+
+    startBtn.addEventListener('click', startBatch);
+    stopBtn.addEventListener('click', stopBatch);
+</script>
 </body>
 </html>

@@ -115,8 +115,13 @@ def validate_single_email_api():
     request_proxy = None
     proxy_data = data.get("proxy")
     if proxy_data:
-        request_proxy = Proxy(proxy_data.get("host"), proxy_data.get("port"),
-                              proxy_data.get("username"), proxy_data.get("password"))
+        request_proxy = Proxy(
+            proxy_data.get("host"),
+            proxy_data.get("port"),
+            proxy_data.get("username"),
+            proxy_data.get("password"),
+            proxy_data.get("scheme", "http")
+        )
     
     # Determine the order of methods
     methods_order = []
@@ -188,8 +193,13 @@ def validate_multiple_emails_api():
 
         request_proxy = None
         if proxy_data:
-            request_proxy = Proxy(proxy_data.get("host"), proxy_data.get("port"),
-                                  proxy_data.get("username"), proxy_data.get("password"))
+            request_proxy = Proxy(
+                proxy_data.get("host"),
+                proxy_data.get("port"),
+                proxy_data.get("username"),
+                proxy_data.get("password"),
+                proxy_data.get("scheme", "http")
+            )
 
         res = try_methods_sync(email, password, methods_order, request_proxy, delay_seconds)
         return res
