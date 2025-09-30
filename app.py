@@ -4,6 +4,8 @@ import os
 import asyncio # For async endpoints
 import random # For proxy selection
 from config import API_KEY # Import API_KEY from config.py
+from typing import Optional
+
 
 app = Flask(__name__)
 email_validator_instance = EmailValidator(timeout=10) # Renamed for consistency
@@ -181,7 +183,6 @@ async def validate_multiple_emails_api(): # Made async
         async with semaphore:
             res = await try_methods_async(email, password, methods_order, request_proxy, delay_seconds)
             # Apply additional delay *after* the entire item is processed, if configured
-            await asyncio.sleep(delay_seconds) 
             return res
 
     tasks = [validate_item_with_concurrency(item) for item in emails_to_validate]
